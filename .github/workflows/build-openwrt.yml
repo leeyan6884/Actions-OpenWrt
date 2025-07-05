@@ -56,6 +56,10 @@ jobs:
         path: openwrt/build_dir
         key: ${{ runner.os }}-openwrt-build-${{ github.sha }}
 
+    - name: 🏗️ feeds clean
+      run: |
+        ./scripts/feeds clean
+        
     - name: 🔄 Update & install feeds
       working-directory: ./openwrt
       run: |
@@ -68,6 +72,10 @@ jobs:
         curl -Lo .config https://raw.githubusercontent.com/leeyan6884/Actions-OpenWrt/refs/heads/main/.config
         make defconfig
 
+    - name: 🔽 make clean
+      working-directory: ./openwrt
+      run: make clean
+      
     - name: 🔽 Download source
       working-directory: ./openwrt
       run: make download -j$(nproc)
