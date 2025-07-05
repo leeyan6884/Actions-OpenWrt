@@ -2,71 +2,99 @@ name: Build OpenWrt
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.config'
+
+env:
+  TZ: Asia/Shanghai
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout
+    - name: ⏬ Checkout
       uses: actions/checkout@v4
 
-    - name: Set up environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib           g++-multilib gettext git libncurses-dev libssl-dev rsync unzip zlib1g-dev file wget           python3 python3-pip python3-setuptools python3-venv libelf-dev ecj java-propose-classpath           libtool-bin zip upx
+    - name: 🕒 Set up timezone
+      run: sudo timedatectl set-timezone "$TZ"
 
-    - name: Clone official OpenWrt source
+    - name: ⚙️ Install dependencies
       run: |
-        git clone --depth=1 https://github.com/openwrt/openwrt openwrt
-        cp .config openwrt/.config
+        sudo apt update
+        sudo apt install -y build-essential ccache ecj fastjar file clang cmake g++ gawk \
+          gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev \
+          libssl-dev python3 python3-venv python3-setuptools python3-dev rsync unzip zlib1g-dev \
+          wget gperf flex subversion curl libtool libtool-bin python3-pip libstdc++-12-dev
 
-    - name: Add custom feeds
+    - name: ➕ Add Swap to Avoid OOM
       run: |
-        cd openwrt
-        echo "src-git passwall https://github.com/xiaorouji/openwrt-passwall" >> feeds.conf.default
-        echo "src-git passwall_pkg https://github.com/xiaorouji/openwrt-passwall-packages" >> feeds.conf.default
-        echo "src-git openclash https://github.com/vernesong/OpenClash" >> feeds.conf.default
-        echo "src-git mosdns https://github.com/sbwml/luci-app-mosdns" >> feeds.conf.default
-        echo "src-git ddnsto https://github.com/linkease/ddnsto-openwrt" >> feeds.conf.default
-        echo "src-git argon https://github.com/jerrykuku/luci-theme-argon" >> feeds.conf.default
-        echo "src-git kms https://github.com/luodaoyi/openwrt-kms" >> feeds.conf.default
+        sudo fallocate -l 2G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        free -h
+        
+    - name: 🚀 Clone ImmortalWrt
+      run: |
+       git clone https://github.com/coolsnowwolf/lede.git openwrt
+       cd openwrt
 
-    - name: Update & install feeds
+    - name: ➕ Add custom feed sources
+      working-directory: ./openwrt
       run: |
-        cd openwrt
+        echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >> feeds.conf.default
+        echo 'src-git small https://github.com/kenzok8/small' >> feeds.conf.default
+
+    - name: 📦 Cache downloads
+      uses: actions/cache@v3
+      with:
+        path: openwrt/downloads
+        key: ${{ runner.os }}-openwrt-downloads-${{ hashFiles('openwrt/feeds.conf.default') }}
+
+    - name: 🏗️ Cache build_dir
+      uses: actions/cache@v3
+      with:
+        path: openwrt/build_dir
+        key: ${{ runner.os }}-openwrt-build-${{ github.sha }}
+
+    - name: 🔄 Update & install feeds
+      working-directory: ./openwrt
+      run: |
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Customize packages
+    - name: 🔧 Load custom config
+      working-directory: ./openwrt
       run: |
-        cd openwrt
-        cat >> .config <<EOF
-
-# Add custom packages
-CONFIG_PACKAGE_luci-app-passwall=y
-CONFIG_PACKAGE_luci-app-openclash=y
-CONFIG_PACKAGE_luci-app-mosdns=y
-CONFIG_PACKAGE_luci-app-ddnsto=y
-CONFIG_PACKAGE_luci-theme-argon=y
-CONFIG_PACKAGE_luci-app-dockerman=y
-CONFIG_PACKAGE_luci-app-kms=y
-CONFIG_PACKAGE_docker-ce=y
-CONFIG_PACKAGE_dockerd=y
-
-EOF
+        curl -Lo .config https://raw.githubusercontent.com/leeyan6884/immortalwrt/refs/heads/master/.config
         make defconfig
 
-    - name: Build
-      run: |
-        cd openwrt
-        make -j$(nproc) || make -j1 V=s
+    - name: 🔽 Download source
+      working-directory: ./openwrt
+      run: make download -j$(nproc)
 
-    - name: Upload firmware
+    - name: 🏗️ Build
+      working-directory: ./openwrt
+      run: make -j$(nproc)
+
+    - name: 📦 Pack firmware
+      working-directory: ./openwrt
+      run: |
+        mkdir -p ../firmware
+        find bin/targets -type f \( -name "*.img" -o -name "*.bin" -o -name "*.tar" \) -exec cp -v {} ../firmware/ \;
+
+    - name: ☁️ Upload firmware to artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: OpenWrt_firmware
-        path: openwrt/bin/targets
+        name: OpenWrt-x86_64
+        path: firmware/
+
+    - name: 🚀 Upload to GitHub Releases
+      uses: ncipollo/release-action@v1
+      with:
+        tag: "firmware-${{ github.run_number }}"
+        name: "OpenWrt x86_64 Build ${{ github.run_number }}"
+        body: |
+          自动编译固件：x86_64 架构，UEFI + BIOS 双启动  
+          包含插件：Passwall、OpenClash、MosDNS、Docker、DDNSto、Argon 主题  
+          构建时间：${{ github.event.head_commit.timestamp }}
+        artifacts: "firmware"
