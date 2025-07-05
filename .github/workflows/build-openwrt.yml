@@ -1,4 +1,4 @@
-name: Build OpenWrt
+name: Build OpenWrt-LEDE
 
 on:
   workflow_dispatch:
@@ -65,7 +65,7 @@ jobs:
     - name: 🔧 Load custom config
       working-directory: ./openwrt
       run: |
-        curl -Lo .config https://raw.githubusercontent.com/leeyan6884/immortalwrt/refs/heads/master/.config
+        curl -Lo .config https://raw.githubusercontent.com/leeyan6884/Actions-OpenWrt/refs/heads/main/.config
         make defconfig
 
     - name: 🔽 Download source
