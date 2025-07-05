@@ -56,11 +56,7 @@ jobs:
       with:
         path: openwrt/build_dir
         key: ${{ runner.os }}-openwrt-build-${{ github.sha }}
-
-    - name: 🏗️ feeds clean
-      run: |
-        ./scripts/feeds clean
-        
+       
     - name: 🔄 Update & install feeds
       working-directory: ./openwrt
       run: |
