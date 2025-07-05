@@ -9,11 +9,12 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
     - name: ⏬ Checkout
       uses: actions/checkout@v4
-
+      with:
+        fetch-depth: 0
+        
     - name: 🕒 Set up timezone
       run: sudo timedatectl set-timezone "$TZ"
 
